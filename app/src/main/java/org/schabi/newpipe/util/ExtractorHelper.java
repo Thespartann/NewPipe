@@ -29,10 +29,12 @@ import org.schabi.newpipe.MainActivity;
 import org.schabi.newpipe.R;
 import org.schabi.newpipe.ReCaptchaActivity;
 import org.schabi.newpipe.extractor.Info;
+import org.schabi.newpipe.extractor.InfoItem;
 import org.schabi.newpipe.extractor.ListExtractor.InfoItemsPage;
 import org.schabi.newpipe.extractor.NewPipe;
 import org.schabi.newpipe.extractor.channel.ChannelInfo;
 import org.schabi.newpipe.extractor.channel.ChannelInfoItem;
+import org.schabi.newpipe.extractor.comments.CommentsInfo;
 import org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException;
 import org.schabi.newpipe.extractor.exceptions.ParsingException;
 import org.schabi.newpipe.extractor.exceptions.ReCaptchaException;
@@ -105,7 +107,7 @@ public final class ExtractorHelper {
                                                    final String url,
                                                    boolean forceLoad) {
         checkServiceId(serviceId);
-        return checkCache(forceLoad, serviceId, url, Single.fromCallable(() ->
+        return checkCache(forceLoad, serviceId, url, InfoItem.InfoType.STREAM, Single.fromCallable(() ->
                 StreamInfo.getInfo(NewPipe.getService(serviceId), url)));
     }
 
@@ -113,7 +115,7 @@ public final class ExtractorHelper {
                                                      final String url,
                                                      boolean forceLoad) {
         checkServiceId(serviceId);
-        return checkCache(forceLoad, serviceId, url, Single.fromCallable(() ->
+        return checkCache(forceLoad, serviceId, url, InfoItem.InfoType.CHANNEL, Single.fromCallable(() ->
                 ChannelInfo.getInfo(NewPipe.getService(serviceId), url)));
     }
 
@@ -125,11 +127,27 @@ public final class ExtractorHelper {
                 ChannelInfo.getMoreItems(NewPipe.getService(serviceId), url, nextStreamsUrl));
     }
 
+    public static Single<CommentsInfo> getCommentsInfo(final int serviceId,
+                                                       final String url,
+                                                       boolean forceLoad) {
+        checkServiceId(serviceId);
+        return checkCache(forceLoad, serviceId, url, InfoItem.InfoType.COMMENT, Single.fromCallable(() ->
+                CommentsInfo.getInfo(NewPipe.getService(serviceId), url)));
+    }
+
+    public static Single<InfoItemsPage> getMoreCommentItems(final int serviceId,
+                                                            final CommentsInfo info,
+                                                            final String nextPageUrl) {
+        checkServiceId(serviceId);
+        return Single.fromCallable(() ->
+                CommentsInfo.getMoreItems(NewPipe.getService(serviceId), info, nextPageUrl));
+    }
+
     public static Single<PlaylistInfo> getPlaylistInfo(final int serviceId,
                                                        final String url,
                                                        boolean forceLoad) {
         checkServiceId(serviceId);
-        return checkCache(forceLoad, serviceId, url, Single.fromCallable(() ->
+        return checkCache(forceLoad, serviceId, url, InfoItem.InfoType.PLAYLIST, Single.fromCallable(() ->
                 PlaylistInfo.getInfo(NewPipe.getService(serviceId), url)));
     }
 
@@ -144,8 +162,8 @@ public final class ExtractorHelper {
     public static Single<KioskInfo> getKioskInfo(final int serviceId,
                                                  final String url,
                                                  boolean forceLoad) {
-        return checkCache(forceLoad, serviceId, url, Single.fromCallable(() ->
-                KioskInfo.getInfo(NewPipe.getService(serviceId), url)));
+        return checkCache(forceLoad, serviceId, url, InfoItem.InfoType.PLAYLIST, Single.fromCallable(() ->
+                KioskInfo.getInfo(NewPipe.getService(serviceId), url, contentCountry)));
     }
 
     public static Single<InfoItemsPage> getMoreKioskItems(final int serviceId,
@@ -169,16 +187,17 @@ public final class ExtractorHelper {
     private static <I extends Info> Single<I> checkCache(boolean forceLoad,
                                                          int serviceId,
                                                          String url,
+                                                         InfoItem.InfoType infoType,
                                                          Single<I> loadFromNetwork) {
         checkServiceId(serviceId);
-        loadFromNetwork = loadFromNetwork.doOnSuccess(info -> cache.putInfo(serviceId, url, info));
+        loadFromNetwork = loadFromNetwork.doOnSuccess(info -> cache.putInfo(serviceId, url, info, infoType));
 
         Single<I> load;
         if (forceLoad) {
-            cache.removeInfo(serviceId, url);
+            cache.removeInfo(serviceId, url, infoType);
             load = loadFromNetwork;
         } else {
-            load = Maybe.concat(ExtractorHelper.loadFromCache(serviceId, url),
+            load = Maybe.concat(ExtractorHelper.<I>loadFromCache(serviceId, url, infoType),
                     loadFromNetwork.toMaybe())
                     .firstElement() //Take the first valid
                     .toSingle();
@@ -190,11 +209,11 @@ public final class ExtractorHelper {
     /**
      * Default implementation uses the {@link InfoCache} to get cached results
      */
-    public static <I extends Info> Maybe<I> loadFromCache(final int serviceId, final String url) {
+    public static <I extends Info> Maybe<I> loadFromCache(final int serviceId, final String url, InfoItem.InfoType infoType) {
         checkServiceId(serviceId);
         return Maybe.defer(() -> {
             //noinspection unchecked
-            I info = (I) cache.getFromKey(serviceId, url);
+            I info = (I) cache.getFromKey(serviceId, url, infoType);
             if (MainActivity.DEBUG) Log.d(TAG, "loadFromCache() called, info > " + info);
 
             // Only return info if it's not null (it is cached)
