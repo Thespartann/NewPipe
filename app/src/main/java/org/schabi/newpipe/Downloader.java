@@ -3,6 +3,7 @@ package org.schabi.newpipe;
 import android.support.annotation.Nullable;
 import android.text.TextUtils;
 
+import org.schabi.newpipe.extractor.DownloadRequest;
 import org.schabi.newpipe.extractor.DownloadResponse;
 import org.schabi.newpipe.extractor.exceptions.ReCaptchaException;
 import org.schabi.newpipe.extractor.utils.Localization;
@@ -187,10 +188,11 @@ public class Downloader implements org.schabi.newpipe.extractor.Downloader {
 
 
     @Override
-    public DownloadResponse get(String siteUrl, Map<String, List<String>> requestHeaders) throws IOException, ReCaptchaException {
+    public DownloadResponse get(String siteUrl, DownloadRequest request) throws IOException, ReCaptchaException {
         final Request.Builder requestBuilder = new Request.Builder()
                 .method("GET", null).url(siteUrl);
 
+        Map<String, List<String>> requestHeaders = request.getRequestHeaders();
         // set custom headers in request
         for (Map.Entry<String, List<String>> pair : requestHeaders.entrySet()) {
             for(String value : pair.getValue()){
@@ -206,8 +208,8 @@ public class Downloader implements org.schabi.newpipe.extractor.Downloader {
             requestBuilder.addHeader("Cookie", mCookies);
         }
 
-        final Request request = requestBuilder.build();
-        final Response response = client.newCall(request).execute();
+        final Request okRequest = requestBuilder.build();
+        final Response response = client.newCall(okRequest).execute();
         final ResponseBody body = response.body();
 
         if (response.code() == 429) {
@@ -224,12 +226,13 @@ public class Downloader implements org.schabi.newpipe.extractor.Downloader {
 
     @Override
     public DownloadResponse get(String siteUrl) throws IOException, ReCaptchaException {
-        return get(siteUrl, Collections.emptyMap());
+        return get(siteUrl, DownloadRequest.emptyRequest);
     }
 
     @Override
-    public DownloadResponse post(String siteUrl, String requestBody, Map<String, List<String>> requestHeaders) throws IOException, ReCaptchaException {
+    public DownloadResponse post(String siteUrl, DownloadRequest request) throws IOException, ReCaptchaException {
 
+        Map<String, List<String>> requestHeaders = request.getRequestHeaders();
         if(null == requestHeaders.get("Content-Type") || requestHeaders.get("Content-Type").isEmpty()){
             // content type header is required. maybe throw an exception here
             return null;
@@ -237,7 +240,10 @@ public class Downloader implements org.schabi.newpipe.extractor.Downloader {
 
         String contentType = requestHeaders.get("Content-Type").get(0);
 
-        RequestBody okRequestBody = RequestBody.create(MediaType.parse(contentType), requestBody);
+        RequestBody okRequestBody = null;
+        if(null != request.getRequestBody()){
+            okRequestBody = RequestBody.create(MediaType.parse(contentType), request.getRequestBody());
+        }
         final Request.Builder requestBuilder = new Request.Builder()
                 .method("POST",  okRequestBody).url(siteUrl);
 
@@ -256,8 +262,8 @@ public class Downloader implements org.schabi.newpipe.extractor.Downloader {
             requestBuilder.addHeader("Cookie", mCookies);
         }
 
-        final Request request = requestBuilder.build();
-        final Response response = client.newCall(request).execute();
+        final Request okRequest = requestBuilder.build();
+        final Response response = client.newCall(okRequest).execute();
         final ResponseBody body = response.body();
 
         if (response.code() == 429) {
